@@ -1,0 +1,13 @@
+.venv/
+.idea/
+.pytest_cache/
+__pycache__/
+*.pyc
+keys/*.pem
+dist*/
+final_build/
+final_dist/
+installer_dist/
+*.spec
+test_*/
+_sample/
