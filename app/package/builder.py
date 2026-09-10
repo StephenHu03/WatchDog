@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from zipfile import ZIP_DEFLATED, ZipFile
-import json
 import os
 import shutil
 import uuid
@@ -14,18 +13,19 @@ from app.injector.bootstrap_injector import BootstrapInjector
 from app.injector.hyperf_injector import HyperfInjector
 from app.license.schema import LicensePayload
 from app.license.signer import LicenseSigner
+from app.license.targets import LicenseTargets
 from app.protector.integrity_builder import build_manifest
 from app.protector.watchdog_builder import WatchdogBuilder
+from app.runtime.profile import PHP_HYPERF
 from app.scanner.project_scanner import ProjectScanner, ProjectInfo
-from app.validation.domain import normalize_domain
-from app.validation.ipv4 import normalize_ipv4
 
 
 @dataclass(frozen=True)
 class BuildRequest:
     project: Path
-    domain: str
-    ipv4: str
+    domains: tuple[str, ...]
+    ipv4s: tuple[str, ...]
+    php_min_version: str
     product_version: str
     output: Path
     private_key: Path
@@ -92,15 +92,21 @@ class PackageBuilder:
 
     def build(self, request: BuildRequest) -> BuildResult:
         project = request.project.resolve()
-        domain = normalize_domain(request.domain)
-        ipv4 = normalize_ipv4(request.ipv4)
-        if not domain and not ipv4:
-            raise ValueError("Domain or IPv4 must be provided")
+        targets = LicenseTargets.create(request.domains, request.ipv4s)
+        php_min_version = PHP_HYPERF.normalize_php_min_version(request.php_min_version)
         if not request.private_key.is_file() or not request.public_key.is_file():
             raise FileNotFoundError("Signing key files are required")
         info = ProjectScanner().scan(project, request.entry)
+        PHP_HYPERF.validate_project_framework(info.framework)
         license_id = request.license_id or f"LIC-{__import__('datetime').datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
-        payload = LicensePayload.create(license_id, request.product_version, domain or None, ipv4 or None, request.product_id)
+        payload = LicensePayload.create(
+            license_id,
+            request.product_version,
+            targets.domains,
+            targets.ipv4s,
+            request.product_id,
+            php_min_version=php_min_version,
+        )
         document = LicenseSigner.sign(payload, LicenseSigner.load_private(request.private_key))
         request.output.mkdir(parents=True, exist_ok=True)
         with TemporaryDirectory(prefix="license-protector-") as temp:
@@ -117,7 +123,15 @@ class PackageBuilder:
             manifest = workspace / "MANIFEST"
             build_manifest(workspace, protected_files + [workspace / "license.dat"], manifest)
             (workspace / "VERSION").write_text(request.product_version + "\n", encoding="utf-8")
-            (workspace / "INSTALL.md").write_text("Deploy this directory as a normal PHP project. No network connection is required.\n", encoding="utf-8")
+            install_notes = (
+                "LicenseProtector delivery\n\n"
+                "Runtime: PHP + Hyperf\n"
+                f"Minimum PHP version: {php_min_version}+\n"
+                "The signed license accepts any one of its listed domains or IPv4 addresses.\n"
+                "The server must enable the sodium extension. Hyperf projects validate Host in the generated middleware.\n"
+                "No network connection is required.\n"
+            )
+            (workspace / "INSTALL.md").write_text(install_notes, encoding="utf-8")
             # Every build gets an immutable archive directory. This prevents a
             # later customer build from overwriting an earlier deliverable.
             release_name = f"{project.name}_Release_{request.product_version}"

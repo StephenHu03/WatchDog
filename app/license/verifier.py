@@ -32,9 +32,9 @@ def validate_document(document: LicenseDocument, public_key, current_domain: str
                 raise LicenseValidationError(ERRORS["expired"], "License expired")
         except ValueError as exc:
             raise LicenseValidationError(ERRORS["malformed"], "Invalid expiry") from exc
-    domain_ok = domain_matches(current_domain, payload.domain)
-    ip_ok = ipv4_matches(current_ips, payload.ipv4)
+    domain_ok = any(domain_matches(current_domain, domain) for domain in payload.domains)
+    ip_ok = any(ipv4_matches(current_ips, ipv4) for ipv4 in payload.ipv4s)
     if not domain_ok and not ip_ok:
-        if payload.ipv4 and not current_ips:
+        if payload.ipv4s and not current_ips:
             raise LicenseValidationError(ERRORS["environment"], "Environment IP unresolved")
         raise LicenseValidationError(ERRORS["domain"], "Domain and IPv4 mismatch")

@@ -3,7 +3,7 @@
 [Setup]
 AppId={{B1E3D6C8-1F0D-4E0D-9E2C-5E0D1A5F2D11}
 AppName=LicenseProtector
-AppVersion=1.0.1
+AppVersion=1.1.0
 AppPublisher=Stephen Hu
 AppPublisherURL=mailto:stephenhu031028@gmail.com
 DefaultDirName={autopf}\LicenseProtector

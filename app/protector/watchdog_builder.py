@@ -39,7 +39,7 @@ class WatchdogBuilder:
 declare(strict_types=1);
 $__lp_d = static function(string $v): string { $v = strtolower(trim($v)); if (strpos($v, '://') !== false) { $v = (string)(parse_url($v, PHP_URL_HOST) ?? ''); } else { $v = explode('/', $v, 2)[0]; $v = explode(':', $v, 2)[0]; } return rtrim($v, '.'); };
 $__lp_i = static function(string $v): string { return filter_var(trim($v), FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) ?: ''; };
-$__lp_fail = static function(string $c): never { error_log('license_id=' . (defined('LP_LICENSE_ID') ? LP_LICENSE_ID : 'unknown') . ' error_code=' . $c . ' timestamp=' . gmdate('c')); http_response_code(403); exit('License validation failed (' . $c . ')'); };
+$__lp_fail = static function(string $c, string $detail = '') { error_log('license_id=' . (defined('LP_LICENSE_ID') ? LP_LICENSE_ID : 'unknown') . ' error_code=' . $c . ' detail=' . $detail . ' timestamp=' . gmdate('c')); http_response_code(403); exit('License validation failed (' . $c . ')'); };
 $__lp_base = dirname(__DIR__, 2);
 $__lp_license = $__lp_base . '/license.dat';
 $__lp_pub = $__lp_base . '/protected/watchdog/public.key';
@@ -58,6 +58,10 @@ $__lp_ok = function_exists('sodium_crypto_sign_verify_detached') && is_string($_
 if (!$__lp_ok && !function_exists('sodium_crypto_sign_verify_detached')) { $__lp_fail('LIC-1007'); }
 if (!$__lp_ok) { $__lp_fail('LIC-1002'); }
 if (!defined('LP_LICENSE_ID')) { define('LP_LICENSE_ID', (string)$__lp_payload['license_id']); }
+$__lp_php_min = (string)($__lp_payload['php_min_version'] ?? '8.0');
+$__lp_php_parts = explode('.', $__lp_php_min, 3);
+$__lp_php_required = ((int)($__lp_php_parts[0] ?? 0) * 10000) + ((int)($__lp_php_parts[1] ?? 0) * 100);
+if ($__lp_php_required < 80000 || PHP_VERSION_ID < $__lp_php_required) { $__lp_fail('LIC-1007', 'php_version'); }
 $__lp_exp = $__lp_payload['expires_at'] ?? null;
 if ($__lp_exp && strtotime((string)$__lp_exp) <= time()) { $__lp_fail('LIC-1005'); }
 /*
@@ -68,13 +72,14 @@ if ($__lp_exp && strtotime((string)$__lp_exp) <= time()) { $__lp_fail('LIC-1005'
 $__lp_require_binding = PHP_SAPI !== 'cli' || isset($__lp_request_host);
 if ($__lp_require_binding) {
     $__lp_host = $__lp_d((string)($__lp_request_host ?? $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? ''));
-    $__lp_domain = $__lp_d((string)($__lp_payload['domain'] ?? ''));
-    $__lp_dm = $___lp_domain !== '' && $__lp_host === $__lp_domain;
-    $__lp_ips = [];
-    foreach (gethostbynamel(gethostname()) ?: [] as $__lp_x) { if ($__lp_i($__lp_x) !== '') { $__lp_ips[] = $__lp_i($__lp_x); } }
-    $__lp_cfg = $__lp_i((string)($_SERVER['SERVER_ADDR'] ?? '')); if ($__lp_cfg !== '') { $__lp_ips[] = $__lp_cfg; }
-    $__lp_im = false; $__lp_want_ip = $__lp_i((string)($__lp_payload['ipv4'] ?? '')); foreach ($__lp_ips as $__lp_x) { if ($__lp_x === $__lp_want_ip) { $__lp_im = true; break; } }
-    if (!$__lp_dm && !$__lp_im) { $__lp_fail($__lp_want_ip !== '' && !$__lp_ips ? 'LIC-1007' : 'LIC-1003'); }
+    $__lp_domains = $__lp_payload['domains'] ?? [($__lp_payload['domain'] ?? '')]; if (!is_array($__lp_domains)) { $__lp_domains = []; }
+    $__lp_dm = false; foreach ($__lp_domains as $__lp_allowed_domain) { if ($__lp_host !== '' && $__lp_host === $__lp_d((string)$__lp_allowed_domain)) { $__lp_dm = true; break; } }
+    $__lp_server_ips = [];
+    foreach (gethostbynamel(gethostname()) ?: [] as $__lp_x) { if ($__lp_i($__lp_x) !== '') { $__lp_server_ips[] = $__lp_i($__lp_x); } }
+    $__lp_cfg = $__lp_i((string)($_SERVER['SERVER_ADDR'] ?? '')); if ($__lp_cfg !== '') { $__lp_server_ips[] = $__lp_cfg; }
+    $__lp_license_ips = $__lp_payload['ipv4s'] ?? [($__lp_payload['ipv4'] ?? '')]; if (!is_array($__lp_license_ips)) { $__lp_license_ips = []; }
+    $__lp_im = false; foreach ($__lp_license_ips as $__lp_allowed_ip) { $__lp_want_ip = $__lp_i((string)$__lp_allowed_ip); foreach ($__lp_server_ips as $__lp_x) { if ($__lp_want_ip !== '' && $__lp_x === $__lp_want_ip) { $__lp_im = true; break 2; } } }
+    if (!$__lp_dm && !$__lp_im) { $__lp_fail(!empty($__lp_license_ips) && !$__lp_server_ips ? 'LIC-1007' : 'LIC-1003', 'target_mismatch'); }
 }
 $__lp_manifest = $__lp_base . '/MANIFEST';
 if (is_file($__lp_manifest)) { $___lp_m = json_decode((string)file_get_contents($__lp_manifest), true); if (!is_array($___lp_m) || !isset($___lp_m['files'])) { $__lp_fail('LIC-1008'); } foreach ($___lp_m['files'] as $__lp_f => $__lp_h) { if (!is_file($__lp_base . '/' . $__lp_f) || hash_file('sha256', $__lp_base . '/' . $__lp_f) !== $__lp_h) { $__lp_fail('LIC-1008'); } } }

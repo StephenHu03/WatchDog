@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "license-protector"
-version = "1.0.0"
+version = "1.1.0"
 requires-python = ">=3.11"
 authors = [{name = "Stephen Hu", email = "stephenhu031028@gmail.com"}]
 description = "Offline PHP source license protection tool"

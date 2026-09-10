@@ -4,7 +4,7 @@
 
 开发者：**Stephen Hu**（stephenhu031028@gmail.com）。
 
-工具只修改临时复制的项目，业务源码仍可编辑；交付包使用 Ed25519 签名 License、域名或 IPv4 二选一校验、保护目录完整性清单，并且运行时不访问网络。
+工具只修改临时复制的项目，业务源码仍可编辑；交付包使用 Ed25519 签名 License、多个域名或多个服务器 IPv4 的任一匹配校验、保护目录完整性清单，并且运行时不访问网络。
 
 Hyperf 项目会额外生成授权中间件，在每个 HTTP 请求中校验真实 Host；不会在 Hyperf 的 CLI 启动阶段误判域名。
 
@@ -12,7 +12,7 @@ Hyperf 项目会额外生成授权中间件，在每个 HTTP 请求中校验真�
 
 ```powershell
 & .\.venv\Scripts\python.exe -m app.cli keygen --private keys\vendor_private.pem --public keys\vendor_public.pem
-& .\.venv\Scripts\python.exe -m app.cli build --project D:\Project\Backend --domain customer.example.com --ipv4 123.123.123.123 --version 1.0.0 --private-key keys\vendor_private.pem --public-key keys\vendor_public.pem --output dist
+& .\.venv\Scripts\python.exe -m app.cli build --project D:\Project\Backend --domain customer.example.com --domain api.customer.example.com --ipv4 123.123.123.123 --php-min-version 8.1 --version 1.0.0 --private-key keys\vendor_private.pem --public-key keys\vendor_public.pem --output dist
 ```
 
 私钥仅保存在厂商电脑，绝不能放进客户交付包或代码仓库。
@@ -36,4 +36,4 @@ Windows 图形化安装包位于 `installer_dist/LicenseProtector-Setup.exe`。�
 <安装目录>\keys\vendor_public.pem
 ```
 
-详细流程和运行时校验原理见 `docs/打包原理说明.md`。
+当前运行环境固定为 PHP + Hyperf。授权支持多个域名和多个 IPv4，任意一个匹配即可通过。目标服务器 PHP 版本在打包时选择（默认 PHP 8.1+），并要求启用 sodium 扩展；详细流程和运行时校验原理见 `docs/打包原理说明.md`。
